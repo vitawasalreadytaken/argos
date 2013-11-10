@@ -35,10 +35,7 @@ def parallelHttpCheck(targets, timeout):
 
 
 
-def generateReport(results, resultFilter = lambda (target, status, content): status != 200):
-	results = filter(resultFilter, results)
-	if not results:
-		return (None, None)
+def generateReport(results):
 	summary = ', '.join([ '{0}: {1}'.format(target['url'], status) for (target, status, content) in results ])
 	detail = '\n\n\n\n'.join([ '*** {0}: {1}\n\n{2}'.format(target['url'], status, content) for (target, status, content) in results ])
 	return (summary, detail)
@@ -74,8 +71,10 @@ def main(argv, settings):
 	if command == 'http-check':
 		targets = getTargets(settings.TARGET_CONF_URLS, settings.TARGET_CONF_TIMEOUT)
 		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT)
-		(summary, detail) = generateReport(results)
-		if summary and detail:
+		alerts = filter(settings.HTTP_ALERT_FILTER, results)
+
+		if alerts:
+			(summary, detail) = generateReport(alerts)
 			r = emailReport(
 				settings.MANDRILL_ENDPOINT, settings.MANDRILL_API_KEY,
 				settings.EMAIL_FROM, settings.EMAIL_FROM_NAME, settings.EMAIL_TO,
