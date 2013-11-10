@@ -1,6 +1,8 @@
 import os
 STATE_DB = os.path.join(os.path.dirname(__file__), 'state.db')
 
+# How often (in minutes) should cron execute us.
+CRON_PERIOD = 10
 
 # Overriden in settings_local.py.
 TARGET_CONF_URLS = (

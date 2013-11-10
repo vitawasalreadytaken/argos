@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import unicode_literals
-import collections, json, requests, shelve, sys, time
+import collections, json, os, random, requests, sh, shelve, sys, time
 from multiprocessing.pool import ThreadPool
 
 
@@ -84,12 +84,33 @@ def filterAlerts(results, alertIndicator, reportTimes, minReportInterval):
 
 
 
+def setupCron(period):
+	randomShift = random.randint(0, period - 1)
+	minutes = range(randomShift, 60, period)
+	# m h dom mon dow command
+	line = '{0} * * * * {1}'.format(','.join(map(str, minutes)), os.path.abspath(__file__))
+	print 'Adding the following line to crontab:'
+	print '  ', line
+	current = unicode(sh.crontab('-l'))
+	this = os.path.basename(__file__)
+	if current.find(this) > -1:
+		print '\nERROR: your current crontab already contains a reference to {0}:\n'.format(this)
+		print current
+		return 2
+
+	new = current + '\n\n' + line + '\n'
+	sh.crontab('-', _in = new)
+	print 'Your new crontab is:\n'
+	print sh.crontab('-l')
+
+
+
+
 
 
 
 def main(argv, settings):
-	# The only command supported so far is 'http-check'.
-	allowedCommands = ('http-check',)
+	allowedCommands = ('http-check', 'setup-cron',)
 
 	# Validate and parse commands.
 	if len(argv) != 2 or argv[1] not in allowedCommands:
@@ -116,6 +137,9 @@ def main(argv, settings):
 				settings.EMAIL_FROM, settings.EMAIL_FROM_NAME, settings.EMAIL_TO,
 				summary, detail
 			)
+
+	elif command == 'setup-cron':
+		return setupCron(settings.CRON_PERIOD)
 
 	state.close()
 
