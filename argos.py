@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import unicode_literals
-import requests, sys
+import json, requests, sys
 from multiprocessing.pool import ThreadPool
 
 
@@ -24,7 +24,7 @@ def httpCheck(target, timeout):
 		headers = '\n'.join([ '{0}: {1}'.format(k, v) for (k, v) in r.headers.items() ])
 		return (target, r.status_code, headers + '\n\n' + r.text)
 	except requests.exceptions.Timeout:
-		return (target, 'timeout', None)
+		return (target, 'timeout (>{0}s)'.format(timeout), None)
 
 
 
@@ -45,6 +45,21 @@ def generateReport(results, resultFilter = lambda (target, status, content): sta
 
 
 
+def emailReport(mandrillEndpoint, mandrillKey, fromEmail, fromName, toEmails, summary, detail):
+	payload = {
+		'key': mandrillKey,
+		'message': {
+			'subject': summary,
+			'text': detail,
+			'from_email': fromEmail,
+			'from_name': fromName,
+			'to': [ {'email': to} for to in toEmails ]
+		}
+	}
+	r = requests.post(mandrillEndpoint, data = json.dumps(payload))
+	return r.json()
+
+
 def main(argv, settings):
 	# The only command supported so far is 'http-check'.
 	allowedCommands = ('http-check',)
@@ -60,7 +75,12 @@ def main(argv, settings):
 		targets = getTargets(settings.TARGET_CONF_URLS, settings.TARGET_CONF_TIMEOUT)
 		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT)
 		(summary, detail) = generateReport(results)
-		print summary
+		if summary and detail:
+			r = emailReport(
+				settings.MANDRILL_ENDPOINT, settings.MANDRILL_API_KEY,
+				settings.EMAIL_FROM, settings.EMAIL_FROM_NAME, settings.EMAIL_TO,
+				summary, detail
+			)
 
 
 
