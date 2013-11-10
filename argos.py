@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import unicode_literals
-import collections, json, os, random, requests, sh, shelve, sys, time
+import collections, json, logging, os, random, requests, sh, shelve, sys, time
 from multiprocessing.pool import ThreadPool
 
 
@@ -15,10 +15,15 @@ def getTargets(confUrls, timeout):
 		try:
 			r = requests.get(url, timeout = timeout)
 			if r.status_code == 200:
-				return r.json()['targets']
+				targets = r.json()['targets']
+				logging.info('Got targets = %r from %s.', targets, url)
+				return targets
 		except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-			pass
-	raise Exception('No target conf URLs could be reached. Tried {0}.'.format(confUrls))
+			logging.warning('Cannot get targets from %s.', url)
+
+	err = 'No target conf URLs could be reached. Tried {0}.'.format(confUrls)
+	logging.error(err)
+	raise Exception(err)
 
 
 
@@ -47,6 +52,7 @@ def generateReport(results):
 
 
 def emailReport(mandrillEndpoint, mandrillKey, fromEmail, fromName, toEmails, summary, detail):
+	logging.info('Emailing "%s" to %r.', summary, toEmails)
 	payload = {
 		'key': mandrillKey,
 		'message': {
@@ -58,7 +64,7 @@ def emailReport(mandrillEndpoint, mandrillKey, fromEmail, fromName, toEmails, su
 		}
 	}
 	r = requests.post(mandrillEndpoint, data = json.dumps(payload))
-	return r.json()
+	logging.info('Mandrill response = %r.', r.json())
 
 
 
@@ -76,8 +82,11 @@ def filterAlerts(results, alertIndicator, reportTimes, minReportInterval):
 			if canSendReport(result.target, reportTimes, minReportInterval):
 				alerts.append(result)
 				reportTimes[key] = time.time()
+			else:
+				logging.info('Report for %r will not be sent.', result.target)
 		else:
 			if key in reportTimes:
+				logging.info('%r is back up.', result.target)
 				del reportTimes[key]
 
 	return (alerts, reportTimes)
@@ -110,6 +119,9 @@ def setupCron(period):
 
 
 def main(argv, settings):
+	if settings.LOG_FILE:
+		logging.basicConfig(filename = settings.LOG_FILE, level = logging.INFO, format='[%(asctime)s][%(levelname)s] %(message)s')
+
 	allowedCommands = ('http-check', 'setup-cron',)
 
 	# Validate and parse commands.
@@ -123,24 +135,29 @@ def main(argv, settings):
 	if not str('reportTimes') in state:
 		state['reportTimes'] = {}
 
+	logging.debug("begin: state['reportTimes'] = %r", state['reportTimes'])
+
 	# Execute.
 	if command == 'http-check':
 		targets = getTargets(settings.TARGET_CONF_URLS, settings.TARGET_CONF_TIMEOUT)
 		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT)
+		logging.info('results = %r', { r.target['url']: r.status for r in results })
 
 		(alerts, state['reportTimes']) = filterAlerts(results, settings.HTTP_ALERT_FILTER, state['reportTimes'], settings.MIN_REPORT_INTERVAL)
 
 		if alerts:
 			(summary, detail) = generateReport(alerts)
-			r = emailReport(
+			emailReport(
 				settings.MANDRILL_ENDPOINT, settings.MANDRILL_API_KEY,
 				settings.EMAIL_FROM, settings.EMAIL_FROM_NAME, settings.EMAIL_TO,
 				summary, detail
 			)
 
+
 	elif command == 'setup-cron':
 		return setupCron(settings.CRON_PERIOD)
 
+	logging.debug("end: state['reportTimes'] = %r", state['reportTimes'])
 	state.close()
 
 
