@@ -1,3 +1,10 @@
+argos.log
+state.db
+settings_local.py
+
+
+
+
 *.py[cod]
 
 # C extensions
