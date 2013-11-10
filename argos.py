@@ -135,7 +135,7 @@ def main(argv, settings):
 	if not str('reportTimes') in state:
 		state[str('reportTimes')] = {}
 
-	logging.debug("begin: state['reportTimes'] = %r", state['reportTimes'])
+	logging.debug("begin: state['reportTimes'] = %r", state[str('reportTimes')])
 
 	# Execute.
 	if command == 'http-check':
@@ -143,7 +143,7 @@ def main(argv, settings):
 		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT)
 		logging.info('results = %r', { r.target['url']: r.status for r in results })
 
-		(alerts, state['reportTimes']) = filterAlerts(results, settings.HTTP_ALERT_FILTER, state['reportTimes'], settings.MIN_REPORT_INTERVAL)
+		(alerts, state[str('reportTimes')]) = filterAlerts(results, settings.HTTP_ALERT_FILTER, state[str('reportTimes')], settings.MIN_REPORT_INTERVAL)
 
 		if alerts:
 			(summary, detail) = generateReport(alerts)
@@ -157,7 +157,7 @@ def main(argv, settings):
 	elif command == 'setup-cron':
 		return setupCron(settings.CRON_PERIOD)
 
-	logging.debug("end: state['reportTimes'] = %r", state['reportTimes'])
+	logging.debug("end: state['reportTimes'] = %r", state[str('reportTimes')])
 	state.close()
 
 
