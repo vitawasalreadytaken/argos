@@ -133,7 +133,7 @@ def main(argv, settings):
 	# Open (and possibly initialize) our state database.
 	state = shelve.open(settings.STATE_DB, writeback = True)
 	if not str('reportTimes') in state:
-		state['reportTimes'] = {}
+		state[str('reportTimes')] = {}
 
 	logging.debug("begin: state['reportTimes'] = %r", state['reportTimes'])
 
