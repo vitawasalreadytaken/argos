@@ -97,7 +97,7 @@ def setupCron(period):
 	randomShift = random.randint(0, period - 1)
 	minutes = range(randomShift, 60, period)
 	# m h dom mon dow command
-	line = '{0} * * * * {1}'.format(','.join(map(str, minutes)), os.path.abspath(__file__))
+	line = '{0} * * * * {1} http-check'.format(','.join(map(str, minutes)), os.path.abspath(__file__))
 	print 'Adding the following line to crontab:'
 	print '  ', line
 	current = unicode(sh.crontab('-l'))
