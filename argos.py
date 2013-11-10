@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 
 from __future__ import unicode_literals
-import json, requests, sys
+import collections, json, requests, shelve, sys, time
 from multiprocessing.pool import ThreadPool
+
+
+
+HttpCheckResult = collections.namedtuple('HttpCheckResult', ('target', 'status', 'content'))
 
 
 
@@ -22,9 +26,9 @@ def httpCheck(target, timeout):
 	try:
 		r = requests.get(target['url'], timeout = timeout)
 		headers = '\n'.join([ '{0}: {1}'.format(k, v) for (k, v) in r.headers.items() ])
-		return (target, r.status_code, headers + '\n\n' + r.text)
+		return HttpCheckResult(target, r.status_code, headers + '\n\n' + r.text)
 	except requests.exceptions.Timeout:
-		return (target, 'timeout (>{0}s)'.format(timeout), None)
+		return HttpCheckResult(target, 'timeout (>{0}s)'.format(timeout), None)
 
 
 
@@ -36,8 +40,8 @@ def parallelHttpCheck(targets, timeout):
 
 
 def generateReport(results):
-	summary = ', '.join([ '{0}: {1}'.format(target['url'], status) for (target, status, content) in results ])
-	detail = '\n\n\n\n'.join([ '*** {0}: {1}\n\n{2}'.format(target['url'], status, content) for (target, status, content) in results ])
+	summary = ', '.join([ '{0}: {1}'.format(r.target['url'], r.status) for r in results ])
+	detail = '\n\n\n\n'.join([ '*** {0}: {1}\n\n{2}'.format(r.target['url'], r.status, r.content) for r in results ])
 	return (summary, detail)
 
 
@@ -57,6 +61,32 @@ def emailReport(mandrillEndpoint, mandrillKey, fromEmail, fromName, toEmails, su
 	return r.json()
 
 
+
+def canSendReport(target, reportTimes, minInterval):
+	key = str(target['url'])
+	return (key not in reportTimes) or (time.time() - reportTimes[key] >= minInterval)
+
+
+
+def filterAlerts(results, alertIndicator, reportTimes, minReportInterval):
+	alerts = []
+	for result in results:
+		key = str(result.target['url'])
+		if alertIndicator(result): # This is an alert.
+			if canSendReport(result.target, reportTimes, minReportInterval):
+				alerts.append(result)
+				reportTimes[key] = time.time()
+		else:
+			if key in reportTimes:
+				del reportTimes[key]
+
+	return (alerts, reportTimes)
+
+
+
+
+
+
 def main(argv, settings):
 	# The only command supported so far is 'http-check'.
 	allowedCommands = ('http-check',)
@@ -67,11 +97,17 @@ def main(argv, settings):
 		return 1
 	command = argv[1]
 
+	# Open (and possibly initialize) our state database.
+	state = shelve.open(settings.STATE_DB, writeback = True)
+	if not str('reportTimes') in state:
+		state['reportTimes'] = {}
+
 	# Execute.
 	if command == 'http-check':
 		targets = getTargets(settings.TARGET_CONF_URLS, settings.TARGET_CONF_TIMEOUT)
 		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT)
-		alerts = filter(settings.HTTP_ALERT_FILTER, results)
+
+		(alerts, state['reportTimes']) = filterAlerts(results, settings.HTTP_ALERT_FILTER, state['reportTimes'], settings.MIN_REPORT_INTERVAL)
 
 		if alerts:
 			(summary, detail) = generateReport(alerts)
@@ -81,6 +117,7 @@ def main(argv, settings):
 				summary, detail
 			)
 
+	state.close()
 
 
 

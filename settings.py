@@ -1,3 +1,7 @@
+import os
+STATE_DB = os.path.join(os.path.dirname(__file__), 'state.db')
+
+
 # Overriden in settings_local.py.
 TARGET_CONF_URLS = (
 	'http://www.example.com/targets.json',
@@ -6,7 +10,8 @@ TARGET_CONF_URLS = (
 TARGET_CONF_TIMEOUT = 10
 HTTP_CHECK_TIMEOUT = 5
 
-HTTP_ALERT_FILTER = lambda (target, status, content): status != 200
+HTTP_ALERT_FILTER = lambda result: result.status != 200
+MIN_REPORT_INTERVAL = 7200
 
 MANDRILL_ENDPOINT = 'https://mandrillapp.com/api/1.0/messages/send.json'
 # Overriden in settings_local.py.
