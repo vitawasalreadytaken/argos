@@ -127,7 +127,7 @@ def setupCron(period):
 
 def main(argv, settings):
 	if settings.LOG_FILE:
-		logging.basicConfig(level = logging.INFO, format='[%(asctime)s][%(levelname)s] %(message)s')
+		logging.basicConfig(filename = settings.LOG_FILE, level = logging.INFO, format='[%(asctime)s][%(levelname)s] %(message)s')
 
 	allowedCommands = ('http-check', 'setup-cron',)
 
