@@ -27,19 +27,26 @@ def getTargets(confUrls, timeout):
 
 
 
-def httpCheck(target, timeout):
-	try:
-		r = requests.get(target['url'], timeout = timeout)
-		headers = '\n'.join([ '{0}: {1}'.format(k, v) for (k, v) in r.headers.items() ])
-		return HttpCheckResult(target, r.status_code, headers + '\n\n' + r.text)
-	except requests.exceptions.Timeout:
-		return HttpCheckResult(target, 'timeout (>{0}s)'.format(timeout), None)
+def httpCheck(target, timeout, attempts):
+	result = HttpCheckResult(None, None, None)
+	while attempts and (result.status != 200):
+		if result.status is not None:
+			logging.info('Got %r for %r, retrying.', result.status, target)
+		try:
+			r = requests.get(target['url'], timeout = timeout)
+			headers = '\n'.join([ '{0}: {1}'.format(k, v) for (k, v) in r.headers.items() ])
+			result = HttpCheckResult(target, r.status_code, headers + '\n\n' + r.text)
+		except requests.exceptions.Timeout:
+			result = HttpCheckResult(target, 'timeout (>{0}s)'.format(timeout), None)
+		attempts -= 1
+		time.sleep(1)
+
+	return result
 
 
-
-def parallelHttpCheck(targets, timeout):
+def parallelHttpCheck(targets, timeout, attempts):
 	pool = ThreadPool(processes = min(len(targets), 10))
-	asyncs = [ pool.apply_async(httpCheck, args = (target, timeout)) for target in targets ]
+	asyncs = [ pool.apply_async(httpCheck, args = (target, timeout, attempts)) for target in targets ]
 	return [ a.get() for a in asyncs ]
 
 
@@ -120,7 +127,7 @@ def setupCron(period):
 
 def main(argv, settings):
 	if settings.LOG_FILE:
-		logging.basicConfig(filename = settings.LOG_FILE, level = logging.INFO, format='[%(asctime)s][%(levelname)s] %(message)s')
+		logging.basicConfig(level = logging.INFO, format='[%(asctime)s][%(levelname)s] %(message)s')
 
 	allowedCommands = ('http-check', 'setup-cron',)
 
@@ -140,7 +147,7 @@ def main(argv, settings):
 	# Execute.
 	if command == 'http-check':
 		targets = getTargets(settings.TARGET_CONF_URLS, settings.TARGET_CONF_TIMEOUT)
-		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT)
+		results = parallelHttpCheck(targets, settings.HTTP_CHECK_TIMEOUT, settings.HTTP_CHECK_ATTEMPTS)
 		logging.info('results = %r', { r.target['url']: r.status for r in results })
 
 		(alerts, state[str('reportTimes')]) = filterAlerts(results, settings.HTTP_ALERT_FILTER, state[str('reportTimes')], settings.MIN_REPORT_INTERVAL)
